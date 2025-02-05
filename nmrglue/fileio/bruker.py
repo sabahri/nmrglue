@@ -386,13 +386,21 @@ def read(dir=".", bin_file=None, acqus_files=None, pprog_file=None, shape=None,
     if pprog_file is None:
         pprog_file = "pulseprogram"
 
+
     # read the pulse program and add to the dictionary
+    '''
     if read_pulseprogram:
         try:
             dic["pprog"] = read_pprog(os.path.join(dir, pprog_file))
         except:
             warn('Error reading the pulse program')
-
+    '''
+    if read_pulseprogram:
+        try:
+            dic["pprog"] = read_pprog(os.path.join(dir, pprog_file))
+        except Exception as e:
+            warn(f'Error reading the pulse program: {str(e)}')
+    
     # determine file size and add to the dictionary
     dic["FILE_SIZE"] = os.stat(os.path.join(dir, bin_file)).st_size
 
@@ -401,7 +409,7 @@ def read(dir=".", bin_file=None, acqus_files=None, pprog_file=None, shape=None,
         gshape, gcplex = guess_shape(dic)
         if gcplex is True:    # divide last dim by 2 if complex
             t = list(gshape)
-            t[-1] = t[-1] // 2
+            t[-2] = t[-2] // 2
             gshape = tuple(t)
     if shape is None:
         shape = gshape
@@ -522,7 +530,7 @@ def read_lowmem(dir=".", bin_file=None, acqus_files=None, pprog_file=None,
         gshape, gcplex = guess_shape(dic)
         if gcplex is True:    # divide last dim by 2 if complex
             t = list(gshape)
-            t[-1] = t[-1] // 2
+            t[-2] = t[-2] // 2
             gshape = tuple(t)
     if shape is None:
         shape = gshape
@@ -978,6 +986,9 @@ def write_pdata(dir, dic, data, roll=False, shape=None, submatrix_shape=None,
     write_binary(bin_full, dic, data, big=big, isfloat=isfloat,
                  overwrite=overwrite)
 
+def next_power_of_2(dim):
+    return(2**int(np.ceil(np.log2(dim))))
+
 
 def guess_shape(dic):
     """
@@ -1030,7 +1041,7 @@ def guess_shape(dic):
     try:
         td3 = int(dic["acqu4s"]["TD"])
     except KeyError:
-        td3 = int(td1)     # default value
+        td3 = int(td2)     # default value
 
     # From the acquisition reference manual (section on parameter NBL):
     #     ---
@@ -1057,9 +1068,11 @@ def guess_shape(dic):
     # next-to-last dimension may be given by "TD" in acqu2s. In 3D+ data
     # this is often the sum of the indirect dimensions
     if dtypa == 2:
-        shape = [0, 0, td2, int(np.ceil(td0 / 128.) * 128.)]
+        #shape = [0, 0, td2, int(np.ceil(td0 / 128.) * 128.)]
+        shape = [0,0,td2, next_power_of_2(td0)]
     else:
-        shape = [0, 0, td2, int(np.ceil(td0 / 256.) * 256.)]
+        #shape = [0, 0, td2, int(np.ceil(td0 / 256.) * 256.)]
+        shape = [0,0,td2, next_power_of_2(td0)]
 
     # additional dimension given by data size
     if shape[2] != 0 and shape[3] != 0:
@@ -1148,7 +1161,7 @@ def guess_shape(dic):
             shape[1] = 2 * loop[4]
         if loop[5] == 2 and li[0] == li[5] == 0 and li[6] != 0:
             shape[0] = 2 * loop[6]
-
+    
     return tuple([int(i) for i in shape if i >= 2]), cplex
 
 
@@ -2651,59 +2664,3 @@ def read_nuslist(dirc=".", fname="nuslist"):
 
     return converted_nuslist
 
-# Read Bruker VD delays list
-
-
-def read_vdlist(dirc, fname='vdlist'):
-    """
-    This function reads a Bruker 'vdlist' file from a specified directory and
-    returns a list of variable delay (vd) times in seconds.
-    The 'vdlist' file contains delay times used in NMR relaxation
-    experiments, typically ns, ms, ms, or s. This function converts all delays
-    to seconds for consistency.
-
-    Parameters
-    ----------
-    dirc : str
-        The directory path where the 'vdlist' file is located.
-    fname : str
-        name of the vdlist file, by default 'vdlist'
-
-    Returns
-    -------
-    vdlist : list
-        A list of delay times in seconds. Each delay time is a float.
-
-    Raises
-    ------
-    FileNotFoundError 
-        if the vdlist file is absent
-
-    """
-    # Check that vdlist file exists
-    vdlist_file = os.path.join(dirc, fname)
-    if os.path.isfile(vdlist_file) is not True:
-        raise FileNotFoundError(
-            f"The 'vdlist' file ({fname}) was not found in the directory: {dirc}. Please ensure"
-            " that you have provided the 'acqu' directory, not the 'pdata' directory."
-        )
-        
-    # Read vdlist file
-    with open(vdlist_file, 'r') as f:
-        vdlist = f.readlines()
-        for i in range(len(vdlist)):
-            if 'n' in vdlist[i]:
-                vdlist[i] = vdlist[i].replace('n', 'e-9')
-            elif 'u' in vdlist[i]:
-                vdlist[i] = vdlist[i].replace('u', 'e-6')
-            elif 'm' in vdlist[i]:
-                vdlist[i] = vdlist[i].replace('m', 'e-3')
-            elif 's' in vdlist[i]:
-                vdlist[i] = vdlist[i].replace('s', 'e0')
-            else:
-                vdlist[i] = vdlist[i].replace('\n', '')
-
-    # Convert to floats
-    vdlist = [float(i) for i in vdlist]
-
-    return vdlist
